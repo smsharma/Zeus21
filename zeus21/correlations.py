@@ -7,10 +7,12 @@ UT Austin and Harvard CfA - January 2023
 
 """
 
-import numpy as np
-from scipy.interpolate import UnivariateSpline
+import jax.numpy as np
+
+# from scipy.interpolate import UnivariateSpline
 import mcfit
-from scipy.special import gammaincc  # actually very fast, no need to approximate
+
+# from scipy.special import gammaincc  # actually very fast, no need to approximate
 
 from . import constants
 from . import cosmology
@@ -27,8 +29,10 @@ class Correlations:
         self.NkCF = len(self._klistCF)
 
         self._PklinCF = np.zeros(self.NkCF)  # P(k) in 1/Mpc^3
+
+        # TODO: vectorize this loop
         for ik, kk in enumerate(self._klistCF):
-            self._PklinCF[ik] = ClassCosmo.pk(kk, 0.0)  # function .pk(k,z)
+            self._PklinCF = self._PklinCF.at[ik].set(ClassCosmo.pk(kk, 0.0))  # function .pk(k,z)
 
         self._xif = mcfit.P2xi(self._klistCF, l=0, lowring=True)
 
@@ -77,12 +81,12 @@ class Correlations:
         for iR1, RR1 in enumerate(Cosmo_Parameters._Rtabsmoo):
             for iR2, RR2 in enumerate(Cosmo_Parameters._Rtabsmoo):
                 if iR1 > iR2:
-                    xi_RR_CF[iR1, iR2] = xi_RR_CF[iR2, iR1]
+                    xi_RR_CF = xi_RR_CF.at[iR1, iR2].set(xi_RR_CF[iR2, iR1])
                 else:
                     _PkRR = self._PklinCF * self.Window(RR1) * self.Window(RR2)
                     self.rlist_CF, xi_mcfit = self._xif(_PkRR, extrap=False)
 
-                    xi_RR_CF[iR1, iR2] = xi_mcfit
+                    xi_RR_CF = xi_RR_CF.at[iR1, iR2].set(xi_mcfit)
 
         return xi_RR_CF
 

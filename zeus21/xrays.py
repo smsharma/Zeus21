@@ -7,7 +7,7 @@ UT Austin and Harvard CfA - January 2023
 
 """
 
-import numpy as np
+import jax.numpy as np
 from . import constants
 from .cosmology import n_baryon, HubinvMpc
 
@@ -52,7 +52,7 @@ class Xray_class:
         #     taulist[iE] = np.trapz(integrand, zinttau)
 
         indextautoolarge = np.array(taulist >= self.TAUMAX)
-        taulist[indextautoolarge] = self.TAUMAX
+        taulist = taulist.at[indextautoolarge].set(self.TAUMAX)
         return taulist
 
     def opacity_Xray(self, Cosmo_Parameters, En, z, zp):

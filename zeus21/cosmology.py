@@ -7,9 +7,9 @@ UT Austin and Harvard CfA - January 2023
 
 """
 
-import numpy as np
+import jax.numpy as np
 from classy import Class
-from scipy.interpolate import RegularGridInterpolator
+from jax.scipy.interpolate import RegularGridInterpolator
 
 from . import constants
 
@@ -147,11 +147,11 @@ class HMF_interpolator:
                 sigmaM = self.sigmaMhtab[iM, iz]
                 dsigmadM = self.dsigmadMMhtab[iM, iz]
 
-                self.HMFtab[iM, iz] = ST_HMF(Cosmo_Parameters, MM, sigmaM, dsigmadM)
+                self.HMFtab = self.HMFtab.at[iM, iz].set(ST_HMF(Cosmo_Parameters, MM, sigmaM, dsigmadM))
 
         _HMFMIN = np.exp(-300.0)  # min HMF to avoid overflowing
         logHMF_ST_trim = self.HMFtab
-        logHMF_ST_trim[np.array(logHMF_ST_trim <= 0.0)] = _HMFMIN
+        logHMF_ST_trim = logHMF_ST_trim.at[np.array(logHMF_ST_trim <= 0.0)].set(_HMFMIN)
         logHMF_ST_trim = np.log(logHMF_ST_trim)
 
         self.fitMztab = [np.log(self.Mhtab), self.zHMFtab]

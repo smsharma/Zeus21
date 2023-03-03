@@ -11,7 +11,7 @@ from . import cosmology
 from .xrays import Xray_class, sigma_HI, sigma_HeI
 from . import constants
 
-import numpy as np
+import jax.numpy as np
 
 
 class get_T21_coefficients:
@@ -71,25 +71,24 @@ class get_T21_coefficients:
         for izp, zp in enumerate(self.zintegral):
             dzp = self.dlogzint * zp
 
-            self.coeff1Xzp[izp] = -2.0 / 3.0 * dzp / cosmology.Hubinvyr(Cosmo_Parameters, zp) / (1 + zp) * (1 + zp) ** 2.0 * constants.yrTos
             # Units of coeff1 are s^1. Does not include fheat or fion yet
-            self.coeff1Xzp[izp] /= (1.0 + zp) ** 2
             # this accounts for adiabatic cooling. compensated by the inverse at the end
+            self.coeff1Xzp = self.coeff1Xzp.at[izp].set(-2.0 / 3.0 * dzp / cosmology.Hubinvyr(Cosmo_Parameters, zp) / (1 + zp) * (1 + zp) ** 2.0 * constants.yrTos) / (1.0 + zp) ** 2
 
             # self.coeff1LyAzp[izp] = (1+zp)**2/(4*np.pi)/cosmology.rho_baryon(Cosmo_Parameters,zp) * constants.Mpctoyr
-            self.coeff1LyAzp[izp] = (1 + zp) ** 2 / (4 * np.pi)
+            self.coeff1LyAzp = self.coeff1LyAzp.at[izp].set((1 + zp) ** 2 / (4 * np.pi))
             # dimless
 
             chizp = ClassCosmo.comoving_distance(zp)
             chitosolve = chizp + self.Rtabsmoo
             chimax = Cosmo_Parameters._chitab[-1]
-            chitosolve[chitosolve > chimax] = chimax  # make sure we don't get chis for z outside of interpolation range. Either way nothing for z>zmax_CLASS~50 will be used.
+            chitosolve = chitosolve.at[chitosolve > chimax].set(chimax)  # make sure we don't get chis for z outside of interpolation range. Either way nothing for z>zmax_CLASS~50 will be used.
 
             ztabedgeRsmoo = cosmology.redshift_of_chi(Cosmo_Parameters, chitosolve)
 
-            self.ztabRsmoo[izp] = ztabedgeRsmoo
+            self.ztabRsmoo = self.ztabRsmoo.at[izp].set(ztabedgeRsmoo)
             if Cosmo_Parameters.Flag_emulate_21cmfast == True:  # 21cmFAST takes it at the midpoint of the two shells. In dr really.
-                self.ztabRsmoo[izp] = np.append((zp + ztabedgeRsmoo[0]) / 2.0, (ztabedgeRsmoo[1:] + ztabedgeRsmoo[:-1]) / 2.0)
+                self.ztabRsmoo = self.ztabRsmoo.at[izp].set(np.append((zp + ztabedgeRsmoo[0]) / 2.0, (ztabedgeRsmoo[1:] + ztabedgeRsmoo[:-1]) / 2.0))
 
             indexkeepRsmoo = np.array(self.ztabRsmoo[izp] < Cosmo_Parameters.zmax_CLASS)  # to ensure we dont integrate to z higher than our interpolation tables
 
@@ -110,8 +109,8 @@ class get_T21_coefficients:
                 if _index_firstzero_weights + 1 >= len(zedgeLyAtab) and n_rec == 0:  # only warn on LyA
                     print("WARNING: Your Rsmmax may not be large enough (widen Rtabsmoo). The LyA calculation may not be converged at the largest zmax.")
                 elif _index_firstzero_weights >= 0:
-                    weights_rec[_index_firstzero_weights] *= (zmax_line - zedgeLyAtab[_index_firstzero_weights]) / (zedgeLyAtab[_index_firstzero_weights + 1] - zedgeLyAtab[_index_firstzero_weights])
-                _Jalpha_coeffs[n_rec] = constants.fractions_recycle[n_rec] * weights_rec * eps_alphaRR
+                    weights_rec = weights_rec.at[_index_firstzero_weights].set(weights_rec[_index_firstzero_weights] * (zmax_line - zedgeLyAtab[_index_firstzero_weights]) / (zedgeLyAtab[_index_firstzero_weights + 1] - zedgeLyAtab[_index_firstzero_weights]))
+                _Jalpha_coeffs = _Jalpha_coeffs.at[n_rec].set(constants.fractions_recycle[n_rec] * weights_rec * eps_alphaRR)
                 # print(n_line, zmax_line, _Jalpha_coeffs[n_rec])
             LyAintegral = Astro_Parameters.N_alpha_perbaryon / Cosmo_Parameters.mu_baryon_Msun * np.sum(_Jalpha_coeffs, axis=0)
             # print(LyAintegral.shape)
@@ -126,7 +125,7 @@ class get_T21_coefficients:
                 modsigmasq = sigmacurr**2 - sigmaR**2
 
                 indextoobig = modsigmasq <= 0.0
-                modsigmasq[indextoobig] = np.inf  # if sigmaR > sigmaM the halo does not fit in the radius R. Cut the sum
+                modsigmasq = modsigmasq[indextoobig].set(np.inf)  # if sigmaR > sigmaM the halo does not fit in the radius R. Cut the sum
                 modsigma = np.sqrt(modsigmasq)
 
                 dsigmadMcurr = HMF_interpolator.dsigmadM_int(HMF_interpolator.Mhtab, zRR)
@@ -137,10 +136,10 @@ class get_T21_coefficients:
                 SFRtab_curr = SFR(Astro_Parameters, Cosmo_Parameters, HMF_interpolator, zRR)
 
                 integrand = HMF_curr * SFRtab_curr * HMF_interpolator.Mhtab
-                self.SFRDbar2D[izp, iR] = np.trapz(integrand, HMF_interpolator.logtabMh)
+                self.SFRDbar2D = self.SFRDbar2D.at[izp, iR].set(np.trapz(integrand, HMF_interpolator.logtabMh))
 
                 if iR == 0:  # only the zp term (R->0)
-                    self.niondot_avg[izp] = np.trapz(integrand * fesctab, HMF_interpolator.logtabMh)  # multiply by Nion/baryon outside the loop
+                    self.niondot_avg = self.niondot_avg[izp].set(np.trapz(integrand * fesctab, HMF_interpolator.logtabMh))  # multiply by Nion/baryon outside the loop
 
                 # First do the average part
                 # For Xrays:
@@ -157,7 +156,7 @@ class get_T21_coefficients:
                 XrayEnergyintegral = np.sum(JX_coeffs * sigma_times_en * _Energylist * Astro_Parameters.dlogEnergy, axis=0)
                 # Note that dEnergy = Energylist * dlogEnergy , since the table is logspaced
 
-                self.coeff2XzpRR[izp, iR] = RR * self.dlogRR * self.SFRDbar2D[izp, iR] * XrayEnergyintegral * (1.0 / constants.Mpctocm**2.0) * constants.normLX_CONST
+                self.coeff2XzpRR = self.coeff2XzpRR.at[izp, iR].set(RR * self.dlogRR * self.SFRDbar2D[izp, iR] * XrayEnergyintegral * (1.0 / constants.Mpctocm**2.0) * constants.normLX_CONST)
                 # Units of coeff2XzpRR are erg/s, since normLX*SFR = erg/s (after sigma goes from cm^2 to Mpc^2)
 
                 # (for LyA is outside loop for vectorization)
@@ -172,7 +171,7 @@ class get_T21_coefficients:
                 SFRD_delta = np.zeros_like(deltatab)
 
                 nu0 = Cosmo_Parameters.delta_crit_ST / sigmacurr  # the EPS delta = 0 result. Note 1/sigmacurr and not sigmamod
-                nu0[indextoobig] = 1.0  # set to 1 to avoid under/overflows, we don't sum over those masses since they're too big
+                nu0 = nu0.at[indextoobig].set(1.0)  # set to 1 to avoid under/overflows, we don't sum over those masses since they're too big
 
                 for idelta, dd in enumerate(deltatab):  ##for now only +1 and -1 sigma. Assume ~exp(gamma delta), find gamma
                     modd = Cosmo_Parameters.delta_crit_ST - dd
@@ -191,11 +190,11 @@ class get_T21_coefficients:
                         print("ERROR: Need to set FLAG_EMULATE_21CMFAST at True or False in the gamma_index2D calculation.")
 
                     integrand_EPS *= 1.0 + dd  # to convert from Lagrangian to Eulerian
-                    SFRD_delta[idelta] = np.trapz(integrand_EPS, HMF_interpolator.logtabMh)
+                    SFRD_delta = SFRD_delta.at[idelta].set(np.trapz(integrand_EPS, HMF_interpolator.logtabMh))
 
-                self.gamma_index2D[izp, iR] = np.log(SFRD_delta[-1] / SFRD_delta[0]) / (deltatab[-1] - deltatab[0])  # notice its der wrt delta, not delta/sigma or growth
+                self.gamma_index2D = self.gamma_index2D.at[izp, iR].set(np.log(SFRD_delta[-1] / SFRD_delta[0]) / (deltatab[-1] - deltatab[0]))  # notice its der wrt delta, not delta/sigma or growth
 
-            self.coeff2LyAzpRR[izp] = self.Rtabsmoo * self.dlogRR * self.SFRDbar2D[izp, :] * LyAintegral / constants.yrTos / constants.Mpctocm**2
+            self.coeff2LyAzpRR = self.coeff2LyAzpRR.at[izp].set(self.Rtabsmoo * self.dlogRR * self.SFRDbar2D[izp, :] * LyAintegral / constants.yrTos / constants.Mpctocm**2)
             # units of 1/cm^2 * (SFR/Msun=1/s)* 1/Hz
 
         # correct for nonlinearities in <(1+d)SFRD>, only if doing nonlinear stuff. We're assuming that (1+d)SFRD ~ exp(gamma*d), so the "Lagrangian" gamma was gamma-1. We're using the fact that for a lognormal variable X = log(Z), with  Z=\gamma \delta, <X> = exp(\gamma^2 \sigma^2/2).
@@ -204,7 +203,7 @@ class get_T21_coefficients:
             self.coeff2XzpRR *= 1.0 + (self.gamma_index2D - 1.0) * self.sigmaofRtab**2
             _corrfactorEulerian = 1.0 + (self.gamma_index2D - 1.0) * self.sigmaofRtab**2
             _corrfactorEulerian = _corrfactorEulerian.T
-            _corrfactorEulerian[0 : Cosmo_Parameters.indexminNL] = _corrfactorEulerian[Cosmo_Parameters.indexminNL]  # for R<R_NL we just fix it to the RNL value, as we do for the correlation function. We could cut the sum but this keeps those scales albeit approximately
+            _corrfactorEulerian = _corrfactorEulerian.at[0 : Cosmo_Parameters.indexminNL].set(_corrfactorEulerian[Cosmo_Parameters.indexminNL])  # for R<R_NL we just fix it to the RNL value, as we do for the correlation function. We could cut the sum but this keeps those scales albeit approximately
             self.coeff2LyAzpRR *= _corrfactorEulerian.T
             self.coeff2XzpRR *= _corrfactorEulerian.T
             ## alternative expression below: if you take (1+d)~exp(d) throughout.
@@ -371,10 +370,10 @@ def SFR(Astro_Parameters, Cosmo_Parameters, HMF_interpolator, z):
         elif Astro_Parameters.accretion_model == 1:  # EPS accretion
             Mh2 = Mh * constants.EPSQ_accretion
             indexMh2low = Mh2 < Mh[0]
-            Mh2[indexMh2low] = Mh[0]  # to avoid extrapolation to lower M. Those will have
+            Mh2 = Mh2.at[indexMh2low].set(Mh[0])  # to avoid extrapolation to lower M. Those will have
             sigmaMh = HMF_interpolator.sigma_int(Mh, z)
             sigmaMh2 = HMF_interpolator.sigma_int(Mh2, z)
-            sigmaMh2[indexMh2low] = 1e99
+            sigmaMh2 = sigmaMh2.at[indexMh2low].set(1e99)
 
             growth = cosmology.growth(Cosmo_Parameters, z)
             dzgrow = z * 0.01

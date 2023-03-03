@@ -9,8 +9,9 @@ UT Austin and Harvard CfA - January 2023
 
 from . import constants
 
-import numpy as np
-from classy import Class
+import jax.numpy as np
+
+# from classy import Class
 from scipy.interpolate import interp1d
 
 
@@ -202,11 +203,11 @@ class Astro_Parameters:
         result = np.zeros_like(nulist)
         for inu, currnu in enumerate(nulist):
             if currnu < constants.freqLyA or currnu >= constants.freqLyCont:
-                result[inu] = 0.0
+                result = result.at[inu].set(0.0)
             elif currnu < nucut:  # between LyA and LyB
-                result[inu] = normbelow * (currnu / nucut) ** indexbelow
+                result = result.at[inu].set(normbelow * (currnu / nucut) ** indexbelow)
             elif currnu >= nucut:  # between LyB and Continuum
-                result[inu] = normabove * (currnu / nucut) ** indexabove
+                result = result.at[inu].set(normabove * (currnu / nucut) ** indexabove)
             else:
                 print("Error in SED_LyA, whats the frequency Kenneth?")
 
